@@ -68,6 +68,7 @@ TARGET_INFO = {
     'huf_decompress': TargetInfo(InputType.RAW_DATA),
     'decompress_cross_format': TargetInfo(InputType.RAW_DATA),
     'generate_sequences': TargetInfo(InputType.RAW_DATA),
+    'multi_ddict_decompress': TargetInfo(InputType.COMPRESSED_DATA),
 }
 TARGETS = list(TARGET_INFO.keys())
 ALL_TARGETS = TARGETS + ['all']

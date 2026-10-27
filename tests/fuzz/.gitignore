@@ -25,6 +25,7 @@ d_lib_*
 crash-*
 decompress_cross_format
 generate_sequences
+multi_ddict_decompress
 
 # misc
 trace

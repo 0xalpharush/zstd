@@ -130,7 +130,8 @@ FUZZ_TARGETS :=       \
 	huf_round_trip \
 	huf_decompress \
 	decompress_cross_format \
-	generate_sequences
+	generate_sequences \
+	multi_ddict_decompress
 
 .PHONY: all clean cleanall
 all: libregression.a $(FUZZ_TARGETS)
@@ -251,6 +252,9 @@ decompress_cross_format: $(FUZZ_HEADERS) $(FUZZ_DECOMPRESS_OBJ) d_fuzz_decompres
 
 generate_sequences: $(FUZZ_HEADERS) $(FUZZ_ROUND_TRIP_OBJ) rt_fuzz_generate_sequences.o
 	$(CXX) $(FUZZ_TARGET_FLAGS) $(FUZZ_ROUND_TRIP_OBJ) rt_fuzz_generate_sequences.o $(LIB_FUZZING_ENGINE) -o $@
+
+multi_ddict_decompress: $(FUZZ_HEADERS) $(FUZZ_DECOMPRESS_OBJ) d_fuzz_multi_ddict_decompress.o
+	$(CXX) $(FUZZ_TARGET_FLAGS) $(FUZZ_DECOMPRESS_OBJ) d_fuzz_multi_ddict_decompress.o $(LIB_FUZZING_ENGINE) -o $@
 
 libregression.a: $(FUZZ_HEADERS) $(PRGDIR)/util.h $(PRGDIR)/util.c d_fuzz_regression_driver.o
 	$(AR) $(FUZZ_ARFLAGS) $@ d_fuzz_regression_driver.o
