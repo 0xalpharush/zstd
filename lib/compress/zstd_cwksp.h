@@ -215,9 +215,7 @@ MEM_STATIC size_t ZSTD_cwksp_align(size_t size, size_t align) {
  * but under special conditions, like ASAN, where we pad each object, it might
  * be larger.)
  *
- * Since tables aren't currently redzoned, you don't need to call through this
- * to figure out how much space you need for the matchState tables. Everything
- * else is though.
+ * For the matchState tables, use ZSTD_cwksp_table_alloc_size() instead.
  *
  * Do not use for sizing aligned buffers. Instead, use ZSTD_cwksp_aligned64_alloc_size().
  */
@@ -230,6 +228,18 @@ MEM_STATIC size_t ZSTD_cwksp_alloc_size(size_t size) {
     return size;
 #endif
 }
+
+/**
+ * Use this to determine how much space in the workspace we will consume to
+ * allocate a matchState table. Under ASAN, each table is followed by a
+ * redzone (see ZSTD_cwksp_reserve_table()). Otherwise, this is exactly the
+ * size of the table.
+ */
+#if ZSTD_ADDRESS_SANITIZER && !defined (ZSTD_ASAN_DONT_POISON_WORKSPACE)
+#  define ZSTD_cwksp_table_alloc_size(size) ZSTD_cwksp_alloc_size(size)
+#else
+#  define ZSTD_cwksp_table_alloc_size(size) (size)
+#endif
 
 MEM_STATIC size_t ZSTD_cwksp_aligned_alloc_size(size_t size, size_t alignment) {
     return ZSTD_cwksp_alloc_size(ZSTD_cwksp_align(size, alignment));
@@ -458,7 +468,7 @@ MEM_STATIC void* ZSTD_cwksp_reserve_table(ZSTD_cwksp* ws, size_t bytes)
         }
     }
     alloc = ws->tableEnd;
-    end = (BYTE *)alloc + bytes;
+    end = (BYTE *)alloc + ZSTD_cwksp_table_alloc_size(bytes);
     top = ws->allocStart;
 
     DEBUGLOG(5, "cwksp: reserving %p table %zd bytes, %zd bytes remaining",
@@ -474,8 +484,19 @@ MEM_STATIC void* ZSTD_cwksp_reserve_table(ZSTD_cwksp* ws, size_t bytes)
     ws->tableEnd = end;
 
 #if ZSTD_ADDRESS_SANITIZER && !defined (ZSTD_ASAN_DONT_POISON_WORKSPACE)
+    /* Each table is followed by 2 * ZSTD_CWKSP_ASAN_REDZONE_SIZE bytes of
+     * redzone. No leading redzone is needed: the preceding allocation, an
+     * object or a table, already ends with one.
+     * The redzone is zeroed before being poisoned, so that the whole
+     * [objectEnd, tableEnd) range keeps respecting the table values bound
+     * even though ZSTD_cwksp_clean_tables() skips over poisoned bytes. */
+    ZSTD_STATIC_ASSERT((2 * ZSTD_CWKSP_ASAN_REDZONE_SIZE) % ZSTD_CWKSP_ALIGNMENT_BYTES == 0);
     if (ws->isStatic == ZSTD_cwksp_dynamic_alloc) {
-        __asan_unpoison_memory_region(alloc, bytes);
+        __asan_unpoison_memory_region(alloc, (size_t)((BYTE*)end - (BYTE*)alloc));
+        if (bytes) {
+            ZSTD_memset((BYTE*)alloc + bytes, 0, 2 * ZSTD_CWKSP_ASAN_REDZONE_SIZE);
+            __asan_poison_memory_region((BYTE*)alloc + bytes, 2 * ZSTD_CWKSP_ASAN_REDZONE_SIZE);
+        }
     }
 #endif
 
@@ -588,7 +609,21 @@ MEM_STATIC void ZSTD_cwksp_clean_tables(ZSTD_cwksp* ws) {
     assert(ws->tableValidEnd >= ws->objectEnd);
     assert(ws->tableValidEnd <= ws->allocStart);
     if (ws->tableValidEnd < ws->tableEnd) {
+#if ZSTD_ADDRESS_SANITIZER && !defined (ZSTD_ASAN_DONT_POISON_WORKSPACE)
+        /* Skip the poisoned redzones between tables: they are already zero
+         * (see ZSTD_cwksp_reserve_table()). */
+        BYTE* p = (BYTE*)ws->tableValidEnd;
+        BYTE* const end = (BYTE*)ws->tableEnd;
+        while (p < end) {
+            BYTE* const rz = (BYTE*)__asan_region_is_poisoned(p, (size_t)(end - p));
+            BYTE* const stop = rz ? rz : end;
+            ZSTD_memset(p, 0, (size_t)(stop - p));
+            p = stop;
+            while (p < end && __asan_address_is_poisoned(p)) p++;
+        }
+#else
         ZSTD_memset(ws->tableValidEnd, 0, (size_t)((BYTE*)ws->tableEnd - (BYTE*)ws->tableValidEnd));
+#endif
     }
     ZSTD_cwksp_mark_tables_clean(ws);
 }

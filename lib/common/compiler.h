@@ -477,6 +477,25 @@ void __asan_poison_memory_region(void const volatile *addr, size_t size);
  * \param addr Start of memory region.
  * \param size Size of memory region. */
 void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+
+/**
+ * Checks if an address is poisoned.
+ *
+ * \param addr Address to check.
+ * \retval 1 Address is poisoned.
+ * \retval 0 Address is not poisoned. */
+int __asan_address_is_poisoned(void const volatile *addr);
+
+/**
+ * Checks if a region is poisoned.
+ *
+ * If at least one byte in <c>[beg, beg+size)</c> is poisoned, returns the
+ * address of the first such byte. Otherwise returns 0.
+ *
+ * \param beg Start of memory region.
+ * \param size Size of memory region.
+ * \returns Address of first poisoned byte. */
+void *__asan_region_is_poisoned(void *beg, size_t size);
 #endif
 
 #endif /* ZSTD_COMPILER_H */
